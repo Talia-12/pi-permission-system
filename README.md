@@ -90,12 +90,14 @@ The extension integrates via Pi's lifecycle hooks:
 
 **Location:** `~/.pi/agent/extensions/pi-permission-system/config.json`
 
-The extension creates this file automatically when it is missing. It controls only extension-local logging behavior:
+The extension creates this file automatically when it is missing. It controls extension-local behavior only — never the policy itself:
 
 ```json
 {
   "debugLog": false,
-  "permissionReviewLog": true
+  "permissionReviewLog": true,
+  "yoloMode": false,
+  "deferAskToAutoMode": false
 }
 ```
 
@@ -103,8 +105,26 @@ The extension creates this file automatically when it is missing. It controls on
 |-----|---------|-------------|
 | `debugLog` | `false` | Enables verbose diagnostic logging to `logs/pi-permission-system-debug.jsonl` |
 | `permissionReviewLog` | `true` | Enables the permission request/denial review log at `logs/pi-permission-system-permission-review.jsonl` |
+| `yoloMode` | `false` | Auto-approves every `ask`, including forwarded subagent requests |
+| `deferAskToAutoMode` | `false` | Hands an `ask` to [pi-automode](https://github.com/czottmann/pi-automode)'s classifier while auto mode is on, instead of prompting |
 
 Both logs write to files only under the extension directory. No debug output is printed to the terminal.
+
+### Running Alongside pi-automode
+
+Pi runs every extension's `tool_call` handler and blocks on the first one that
+says so, so with pi-automode installed a tool call must clear both gates and
+neither sees the other's verdict. Left alone that means an `ask` is prompted
+*and* classified, and an `allow` here still faces the classifier.
+
+`deferAskToAutoMode` fixes the first half: while pi-automode is loaded and
+enabled for the session, an `ask` resolved on a tool call returns without
+prompting and pi-automode's classifier decides. `deny` still blocks, and with
+auto mode off the prompt behaves exactly as before. Skill-read asks are never
+deferred — pi-automode does not gate those.
+
+The second half is not something this extension can do from its side: to keep an
+`allow` deterministic, mirror it into pi-automode's own `permissions.allow`.
 
 ### Global Policy File
 
@@ -476,6 +496,7 @@ npm run check    # Run lint + test
 
 ## Related Pi Extensions
 
+- [pi-automode](https://github.com/czottmann/pi-automode) — Classifier-backed auto mode; see [Running Alongside pi-automode](#running-alongside-pi-automode)
 - [pi-multi-auth](https://github.com/MasuRii/pi-multi-auth) — Multi-provider credential management and quota-aware rotation
 - [pi-tool-display](https://github.com/MasuRii/pi-tool-display) — Compact tool rendering and diff visualization
 - [pi-rtk-optimizer](https://github.com/MasuRii/pi-rtk-optimizer) — RTK command rewriting and output compaction

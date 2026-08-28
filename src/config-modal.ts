@@ -44,6 +44,7 @@ function cloneDefaultConfig(): PermissionSystemExtensionConfig {
     debugLog: DEFAULT_EXTENSION_CONFIG.debugLog,
     permissionReviewLog: DEFAULT_EXTENSION_CONFIG.permissionReviewLog,
     yoloMode: DEFAULT_EXTENSION_CONFIG.yoloMode,
+    deferAskToAutoMode: DEFAULT_EXTENSION_CONFIG.deferAskToAutoMode,
   };
 }
 
@@ -54,6 +55,7 @@ function toOnOff(value: boolean): string {
 function summarizeConfig(config: PermissionSystemExtensionConfig): string {
   return [
     `yoloMode=${toOnOff(config.yoloMode)}`,
+    `deferAskToAutoMode=${toOnOff(config.deferAskToAutoMode)}`,
     `permissionReviewLog=${toOnOff(config.permissionReviewLog)}`,
     `debugLog=${toOnOff(config.debugLog)}`,
   ].join(", ");
@@ -66,6 +68,13 @@ function buildSettingItems(config: PermissionSystemExtensionConfig): SettingItem
       label: "YOLO mode",
       description: "Auto-approve ask-state permission checks, including subagent approval forwarding",
       currentValue: toOnOff(config.yoloMode),
+      values: ON_OFF,
+    },
+    {
+      id: "deferAskToAutoMode",
+      label: "Defer ask to auto mode",
+      description: "While pi-automode is enabled, let its classifier judge ask-state tool calls instead of prompting",
+      currentValue: toOnOff(config.deferAskToAutoMode),
       values: ON_OFF,
     },
     {
@@ -93,6 +102,8 @@ function applySetting(
   switch (id) {
     case "yoloMode":
       return { ...config, yoloMode: value === "on" };
+    case "deferAskToAutoMode":
+      return { ...config, deferAskToAutoMode: value === "on" };
     case "permissionReviewLog":
       return { ...config, permissionReviewLog: value === "on" };
     case "debugLog":
@@ -104,6 +115,7 @@ function applySetting(
 
 function syncSettingValues(settingsList: SettingValueSyncTarget, config: PermissionSystemExtensionConfig): void {
   settingsList.updateValue("yoloMode", toOnOff(config.yoloMode));
+  settingsList.updateValue("deferAskToAutoMode", toOnOff(config.deferAskToAutoMode));
   settingsList.updateValue("permissionReviewLog", toOnOff(config.permissionReviewLog));
   settingsList.updateValue("debugLog", toOnOff(config.debugLog));
 }

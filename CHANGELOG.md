@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `deferAskToAutoMode` config option: while [pi-automode](https://github.com/czottmann/pi-automode) is loaded and enabled for the session, an `ask` on a tool call is handed to its classifier instead of prompting
+- `src/auto-mode.ts` detects pi-automode via its `automode_inspect` tool, its `pi-automode-state` session entry, and its own config files
+- Settings-modal toggle and `/permission-system show` summary entry for the new option
+
 ## [0.4.1] - 2026-04-01
 
 ### Changed

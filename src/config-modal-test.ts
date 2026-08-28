@@ -141,6 +141,7 @@ await runAsyncTest("permission-system command handlers manage config summary, pe
     debugLog: true,
     permissionReviewLog: false,
     yoloMode: true,
+    deferAskToAutoMode: true,
   };
 
   try {

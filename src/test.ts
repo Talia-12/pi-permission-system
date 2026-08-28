@@ -17,6 +17,14 @@ import { getPermissionSystemStatus } from "./status.js";
 import { sanitizeAvailableToolsSection } from "./system-prompt-sanitizer.js";
 import type { AgentPermissions, GlobalPermissionConfig } from "./types.js";
 import { canResolveAskPermissionRequest, shouldAutoApprovePermissionState } from "./yolo-mode.js";
+import {
+  AUTO_MODE_TOOL_NAME,
+  isAutoModeActive,
+  isAutoModeExtensionLoaded,
+  readAutoModeConfiguredEnabled,
+  readAutoModeSessionOverride,
+  shouldDeferAskToAutoMode,
+} from "./auto-mode.js";
 
 type CreateManagerOptions = {
   mcpServerNames?: readonly string[];
@@ -88,6 +96,7 @@ runTest("Permission-system extension config loads yolo mode when explicitly enab
         debugLog: true,
         permissionReviewLog: false,
         yoloMode: true,
+        deferAskToAutoMode: true,
       }, null, 2)}\n`,
       "utf8",
     );
@@ -99,6 +108,7 @@ runTest("Permission-system extension config loads yolo mode when explicitly enab
       debugLog: true,
       permissionReviewLog: false,
       yoloMode: true,
+      deferAskToAutoMode: true,
     });
   } finally {
     rmSync(baseDir, { recursive: true, force: true });
@@ -139,6 +149,7 @@ runTest("Permission-system extension config save persists normalized config", ()
         debugLog: true,
         permissionReviewLog: false,
         yoloMode: true,
+        deferAskToAutoMode: true,
       },
       configPath,
     );
@@ -151,6 +162,7 @@ runTest("Permission-system extension config save persists normalized config", ()
       debugLog: true,
       permissionReviewLog: false,
       yoloMode: true,
+      deferAskToAutoMode: true,
     });
   } finally {
     rmSync(baseDir, { recursive: true, force: true });
@@ -1279,6 +1291,87 @@ permission:
   } finally {
     cleanup();
   }
+});
+
+function autoModeStateEntry(enabledOverride: unknown): unknown {
+  return { type: "custom", customType: "pi-automode-state", data: { enabledOverride } };
+}
+
+runTest("Auto-mode detection keys off pi-automode's own tool", () => {
+  assert.equal(isAutoModeExtensionLoaded(["bash", "read"]), false);
+  assert.equal(isAutoModeExtensionLoaded(["bash", AUTO_MODE_TOOL_NAME, null]), true);
+});
+
+runTest("Auto-mode session override wins over configured state, latest entry first", () => {
+  assert.equal(readAutoModeSessionOverride({ getEntries: () => [] }), undefined);
+  assert.equal(
+    readAutoModeSessionOverride({ getEntries: () => [{ type: "message" }, autoModeStateEntry("yes")] }),
+    undefined,
+  );
+  assert.equal(
+    readAutoModeSessionOverride({
+      getEntries: () => [autoModeStateEntry(true), autoModeStateEntry(false)],
+    }),
+    false,
+  );
+});
+
+runTest("Auto-mode configured state falls back to pi-automode's own default", () => {
+  const baseDir = mkdtempSync(join(tmpdir(), "pi-permission-system-automode-"));
+  const globalPath = join(baseDir, "config.json");
+  const projectDir = join(baseDir, "project");
+  mkdirSync(join(projectDir, ".pi"), { recursive: true });
+
+  try {
+    assert.equal(readAutoModeConfiguredEnabled(projectDir, globalPath), true);
+
+    writeFileSync(globalPath, `${JSON.stringify({ autoMode: { enabled: false } })}\n`, "utf8");
+    assert.equal(readAutoModeConfiguredEnabled(projectDir, globalPath), false);
+
+    writeFileSync(
+      join(projectDir, ".pi", "automode.local.json"),
+      `${JSON.stringify({ autoMode: { enabled: true } })}\n`,
+      "utf8",
+    );
+    assert.equal(readAutoModeConfiguredEnabled(projectDir, globalPath), true);
+
+    writeFileSync(globalPath, "not json", "utf8");
+    rmSync(join(projectDir, ".pi", "automode.local.json"));
+    assert.equal(readAutoModeConfiguredEnabled(projectDir, globalPath), true);
+  } finally {
+    rmSync(baseDir, { recursive: true, force: true });
+  }
+});
+
+runTest("Auto mode is only active when pi-automode is loaded and enabled", () => {
+  const noEntries = { getEntries: () => [] };
+  assert.equal(
+    isAutoModeActive({ toolNames: ["bash"], sessionManager: noEntries, configuredEnabled: true }),
+    false,
+  );
+  assert.equal(
+    isAutoModeActive({ toolNames: [AUTO_MODE_TOOL_NAME], sessionManager: noEntries, configuredEnabled: false }),
+    false,
+  );
+  assert.equal(
+    isAutoModeActive({ toolNames: [AUTO_MODE_TOOL_NAME], sessionManager: noEntries, configuredEnabled: true }),
+    true,
+  );
+  assert.equal(
+    isAutoModeActive({
+      toolNames: [AUTO_MODE_TOOL_NAME],
+      sessionManager: { getEntries: () => [autoModeStateEntry(true)] },
+      configuredEnabled: false,
+    }),
+    true,
+  );
+});
+
+runTest("Ask is deferred to auto mode only when both the setting and auto mode are on", () => {
+  const deferring = { ...DEFAULT_EXTENSION_CONFIG, deferAskToAutoMode: true };
+  assert.equal(shouldDeferAskToAutoMode(DEFAULT_EXTENSION_CONFIG, true), false);
+  assert.equal(shouldDeferAskToAutoMode(deferring, false), false);
+  assert.equal(shouldDeferAskToAutoMode(deferring, true), true);
 });
 
 console.log("All permission system tests passed.");

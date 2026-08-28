@@ -31,6 +31,12 @@ import { checkRequestedToolRegistration, getToolNameFromValue } from "./tool-reg
 import type { PermissionCheckResult, PermissionState } from "./types.js";
 import { PERMISSION_SYSTEM_STATUS_KEY, syncPermissionSystemStatus } from "./status.js";
 import { canResolveAskPermissionRequest, shouldAutoApprovePermissionState } from "./yolo-mode.js";
+import {
+  AUTO_MODE_DEFAULT_ENABLED,
+  isAutoModeActive,
+  readAutoModeConfiguredEnabled,
+  shouldDeferAskToAutoMode,
+} from "./auto-mode.js";
 
 const PI_AGENT_DIR = join(homedir(), ".pi", "agent");
 const SESSIONS_DIR = join(PI_AGENT_DIR, "sessions");
@@ -917,6 +923,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
   let isProcessingForwardedRequests = false;
   let runtimeContext: ExtensionContext | null = null;
   let lastConfigWarning: string | null = null;
+  let autoModeConfiguredEnabled = AUTO_MODE_DEFAULT_ENABLED;
 
   const notifyWarning = (message: string): void => {
     if (!runtimeContext?.hasUI) {
@@ -951,6 +958,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       debugLog: result.config.debugLog,
       permissionReviewLog: result.config.permissionReviewLog,
       yoloMode: result.config.yoloMode,
+      deferAskToAutoMode: result.config.deferAskToAutoMode,
     });
   };
 
@@ -972,6 +980,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
       debugLog: normalized.debugLog,
       permissionReviewLog: normalized.permissionReviewLog,
       yoloMode: normalized.yoloMode,
+      deferAskToAutoMode: normalized.deferAskToAutoMode,
     });
   };
 
@@ -1161,6 +1170,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     runtimeContext = ctx;
     refreshExtensionConfig(ctx);
     permissionManager = createPermissionManagerForCwd(ctx.cwd);
+    autoModeConfiguredEnabled = readAutoModeConfiguredEnabled(ctx.cwd);
     activeSkillEntries = [];
     lastKnownActiveAgentName = getActiveAgentName(ctx);
     startForwardedPermissionPolling(ctx);
@@ -1170,6 +1180,7 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     runtimeContext = ctx;
     refreshExtensionConfig(ctx);
     permissionManager = createPermissionManagerForCwd(ctx.cwd);
+    autoModeConfiguredEnabled = readAutoModeConfiguredEnabled(ctx.cwd);
     activeSkillEntries = [];
     lastKnownActiveAgentName = getActiveAgentName(ctx);
     startForwardedPermissionPolling(ctx);
@@ -1372,6 +1383,24 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
     }
 
     if (check.state === "ask") {
+      const autoModeActive = isAutoModeActive({
+        toolNames: pi.getAllTools().map(getEventToolName),
+        sessionManager: ctx.sessionManager,
+        configuredEnabled: autoModeConfiguredEnabled,
+      });
+
+      if (shouldDeferAskToAutoMode(extensionConfig, autoModeActive)) {
+        writeReviewLog("permission_request.deferred_to_auto_mode", {
+          source: "tool_call",
+          toolCallId: event.toolCallId,
+          toolName,
+          agentName,
+          ...permissionLogContext,
+          resolution: "deferred_to_auto_mode",
+        });
+        return {};
+      }
+
       const unavailableReason = toolName === "bash" && isToolCallEventType("bash", event)
         ? `Running bash command '${event.input.command}' requires approval, but no interactive UI is available.`
         : toolName === "mcp"
