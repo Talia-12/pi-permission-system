@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { toRecord } from "./common.js";
 
@@ -31,8 +31,21 @@ export const DEFAULT_EXTENSION_CONFIG: PermissionSystemExtensionConfig = {
   deferAskToAutoMode: false,
 };
 
-export function resolveExtensionRoot(moduleUrl = import.meta.url): string {
-  return join(dirname(fileURLToPath(moduleUrl)), "..");
+/**
+ * Where the extension keeps its mutable state (config.json, logs/).
+ *
+ * Deliberately NOT derived from import.meta.url: under a nix/home-manager
+ * install the source files are symlinks into the read-only store, and bun
+ * resolves every relatively-imported module to its real path — so paths
+ * computed from the module's own location land in the store, where the config
+ * cannot be read from its intended place nor the logs written. The agent dir
+ * is stable, writable, and where an extension's state belongs. The directory
+ * name must match EXTENSION_ID, which is how pi installs auto-discovered
+ * extensions anyway.
+ */
+export function resolveExtensionRoot(agentDir = process.env.PI_CODING_AGENT_DIR): string {
+  const base = agentDir?.trim() ? agentDir : join(homedir(), ".pi", "agent");
+  return join(base, "extensions", EXTENSION_ID);
 }
 
 export const EXTENSION_ROOT = resolveExtensionRoot();
